@@ -285,25 +285,20 @@ function refreshSectionBadge(cat) {
   const {total,done} = catTotals(cat);
   const shdr = sec.querySelector('.shdr');
   const addBtn = shdr.querySelector('.shdr-add');
-  // Update count/done badge
-  const old = shdr.querySelector('.shdr-count, .shdr-done');
-  if (old) old.remove();
+  // Always remove both so we re-insert in correct order
+  shdr.querySelector('.shdr-count, .shdr-done')?.remove();
+  shdr.querySelector('.shdr-restore')?.remove();
+  // Badge (inserted first, before addBtn)
   const el = document.createElement('span');
   if (done===total && total>0) { el.className='shdr-done'; el.textContent='✓ All done'; }
   else                         { el.className='shdr-count'; el.textContent=done+'/'+total; }
   shdr.insertBefore(el, addBtn);
-  // Show/hide restore button
-  const hasHidden = (hidden[cat]||[]).length > 0;
-  let restoreBtn = shdr.querySelector('.shdr-restore');
-  if (hasHidden && !restoreBtn) {
-    restoreBtn = document.createElement('button');
-    restoreBtn.className = 'shdr-restore';
-    restoreBtn.dataset.restore = cat;
-    restoreBtn.title = 'Restore deleted items';
-    restoreBtn.textContent = '↩';
-    shdr.insertBefore(restoreBtn, addBtn);
-  } else if (!hasHidden && restoreBtn) {
-    restoreBtn.remove();
+  // Restore button (inserted second, before addBtn — so order is: badge | restore | +)
+  if ((hidden[cat]||[]).length > 0) {
+    const btn = document.createElement('button');
+    btn.className='shdr-restore'; btn.dataset.restore=cat;
+    btn.title='Restore deleted items'; btn.textContent='↩';
+    shdr.insertBefore(btn, addBtn);
   }
 }
 
