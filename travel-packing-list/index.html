@@ -72,6 +72,8 @@
       cursor:pointer; flex-shrink:0; transition:background .15s,transform .15s;
     }
     .shdr-add:active { background:rgba(61,43,107,.22); transform:scale(1.12); }
+    .shdr-restore { width:28px; height:28px; border-radius:8px; border:none; background:rgba(45,184,104,.12); color:#1E9E50; font-size:14px; display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; transition:background .15s,transform .15s; }
+    .shdr-restore:active { background:rgba(45,184,104,.25); transform:scale(1.12); }
     .shdr-chev { color:#C5C7D4; font-size:11px; transition:transform .25s; flex-shrink:0; }
     .section.collapsed .shdr-chev { transform:rotate(-90deg); }
 
@@ -231,10 +233,11 @@ const DEFAULT = {
   ]
 };
 
-const K = { state:"pk_v4", custom:"pk_custom_v2", collapsed:"pk_coll_v2" };
+const K = { state:"pk_v4", custom:"pk_custom_v2", collapsed:"pk_coll_v2", hidden:"pk_hidden_v1" };
 let state     = ls(K.state);
 let custom    = ls(K.custom);
 let collapsed = ls(K.collapsed);
+let hidden    = ls(K.hidden);
 let addTarget = null;
 let prevPct   = 0;
 
@@ -242,8 +245,9 @@ function ls(k)    { try { return JSON.parse(localStorage.getItem(k)) || {}; } ca
 function save(k,v){ localStorage.setItem(k, JSON.stringify(v)); }
 function esc(s)   { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
-function allItems(cat) { return [...(DEFAULT[cat]||[]), ...(custom[cat]||[])]; }
+function allItems(cat) { return [...(DEFAULT[cat]||[]).filter(i=>!(hidden[cat]||[]).includes(i)), ...(custom[cat]||[])]; }
 function isCust(c,i)   { return (custom[c]||[]).includes(i); }
+function isHidden(c,i) { return (hidden[c]||[]).includes(i); }
 function sk(c,i)       { return c+'::'+i; }
 function isChk(c,i)    { return !!state[sk(c,i)]; }
 
@@ -274,18 +278,33 @@ function updateHeader() {
   prevPct = pct;
 }
 
-// ── Section header badge ──────────────────────────────────────
+// ── Section header badge + restore button ─────────────────────
 function refreshSectionBadge(cat) {
   const sec = document.querySelector(`.section[data-cat="${cat}"]`);
   if (!sec) return;
   const {total,done} = catTotals(cat);
-  const addBtn = sec.querySelector('.shdr-add');
-  const old = sec.querySelector('.shdr-count, .shdr-done');
+  const shdr = sec.querySelector('.shdr');
+  const addBtn = shdr.querySelector('.shdr-add');
+  // Update count/done badge
+  const old = shdr.querySelector('.shdr-count, .shdr-done');
   if (old) old.remove();
   const el = document.createElement('span');
-  if (done===total) { el.className='shdr-done'; el.textContent='✓ All done'; }
-  else              { el.className='shdr-count'; el.textContent=done+'/'+total; }
-  sec.querySelector('.shdr').insertBefore(el, addBtn);
+  if (done===total && total>0) { el.className='shdr-done'; el.textContent='✓ All done'; }
+  else                         { el.className='shdr-count'; el.textContent=done+'/'+total; }
+  shdr.insertBefore(el, addBtn);
+  // Show/hide restore button
+  const hasHidden = (hidden[cat]||[]).length > 0;
+  let restoreBtn = shdr.querySelector('.shdr-restore');
+  if (hasHidden && !restoreBtn) {
+    restoreBtn = document.createElement('button');
+    restoreBtn.className = 'shdr-restore';
+    restoreBtn.dataset.restore = cat;
+    restoreBtn.title = 'Restore deleted items';
+    restoreBtn.textContent = '↩';
+    shdr.insertBefore(restoreBtn, addBtn);
+  } else if (!hasHidden && restoreBtn) {
+    restoreBtn.remove();
+  }
 }
 
 // ── Item HTML ─────────────────────────────────────────────────
@@ -300,7 +319,7 @@ function itemHTML(cat, item) {
       <svg class="ck" viewBox="0 0 13 13" fill="none"><path d="M2 6.5L5.5 10L11 3.5" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </div>
     <span class="item-name">${esc(item)}</span>
-    ${custom?`<button class="item-del" data-dc="${esc(cat)}" data-di="${esc(item)}">×</button>`:''}
+    <button class="item-del" data-dc="${esc(cat)}" data-di="${esc(item)}">×</button>
   </div>`;
 }
 
@@ -329,9 +348,10 @@ function render() {
       <div class="shdr">
         <div class="shdr-icon" style="background:${meta.bg}">${meta.icon}</div>
         <span class="shdr-title">${esc(cat)}</span>
-        ${done===total
+        ${done===total && total>0
           ? `<span class="shdr-done">✓ All done</span>`
           : `<span class="shdr-count">${done}/${total}</span>`}
+        ${(hidden[cat]||[]).length>0 ? `<button class="shdr-restore" data-restore="${esc(cat)}" title="Restore deleted items">↩</button>` : ''}
         <button class="shdr-add" data-add="${esc(cat)}">+</button>
         <span class="shdr-chev">▼</span>
       </div>
@@ -346,13 +366,28 @@ function render() {
 
 // ── Event delegation ──────────────────────────────────────────
 document.getElementById('content').addEventListener('click', e => {
-  // Delete custom item
+  // Delete item (custom = remove; default = hide)
   const del = e.target.closest('.item-del');
   if (del) {
     const c=del.dataset.dc, i=del.dataset.di;
-    custom[c]=(custom[c]||[]).filter(x=>x!==i);
+    if (isCust(c,i)) {
+      custom[c]=(custom[c]||[]).filter(x=>x!==i);
+      save(K.custom,custom);
+    } else {
+      if (!hidden[c]) hidden[c]=[];
+      if (!hidden[c].includes(i)) hidden[c].push(i);
+      save(K.hidden,hidden);
+    }
     delete state[sk(c,i)];
-    save(K.custom,custom); save(K.state,state);
+    save(K.state,state);
+    refreshSectionItems(c); refreshSectionBadge(c); updateHeader();
+    return;
+  }
+  // Restore hidden defaults for a section
+  const restoreBtn = e.target.closest('.shdr-restore');
+  if (restoreBtn) {
+    const c=restoreBtn.dataset.restore;
+    hidden[c]=[]; save(K.hidden,hidden);
     refreshSectionItems(c); refreshSectionBadge(c); updateHeader();
     return;
   }
@@ -368,7 +403,7 @@ document.getElementById('content').addEventListener('click', e => {
   }
   // Collapse header
   const hdr = e.target.closest('.shdr');
-  if (hdr && !e.target.closest('.shdr-add')) {
+  if (hdr && !e.target.closest('.shdr-add') && !e.target.closest('.shdr-restore')) {
     const sec = hdr.closest('.section');
     const cat = sec.dataset.cat;
     collapsed[cat] = !collapsed[cat];
