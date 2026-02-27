@@ -324,7 +324,7 @@ function itemHTML(cat, item) {
 function refreshSectionItems(cat) {
   const sec = document.querySelector(`.section[data-cat="${cat}"]`);
   if (!sec) return;
-  const items = allItems(cat);
+  const items = allItems(cat).sort((a,b) => isChk(cat,a) - isChk(cat,b));
   sec.querySelector('.sitems').innerHTML = items.map(i=>itemHTML(cat,i)).join('');
   sec.querySelector('.sitems').style.maxHeight = (items.length*50+4)+'px';
 }
@@ -335,7 +335,7 @@ function render() {
   content.innerHTML = '';
   for (const cat of Object.keys(DEFAULT)) {
     const meta  = CATS[cat]||{icon:'📦',bg:'#F0F2F8',color:'#888'};
-    const items = allItems(cat);
+    const items = allItems(cat).sort((a,b) => isChk(cat,a) - isChk(cat,b));
     const {total,done} = catTotals(cat);
     const isCollapsed  = !!collapsed[cat];
     const maxH = (items.length*50+4)+'px';
